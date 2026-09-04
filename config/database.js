@@ -1,18 +1,27 @@
+"use strict";
 
-const mysql = require("mysql2/promise");
 require("dotenv").config();
 
-const db = mysql.createPool({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    port: process.env.DB_PORT,
+const { Pool } = require("pg");
 
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
+const db = new Pool({
+    connectionString: process.env.DATABASE_URL,
+
+    ssl: {
+        rejectUnauthorized: false
+    },
+
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000
+});
+
+db.on("connect", () => {
+    console.log("Connected to Supabase PostgreSQL");
+});
+
+db.on("error", (err) => {
+    console.error("Unexpected database error:", err);
 });
 
 module.exports = db;
-
