@@ -120,22 +120,20 @@ app.get("/api/test-db", async (req, res) => {
 
     try {
 
-        const [result] = await db.query(
+        const result = await db.query(
             "SELECT 1 AS connected"
         );
-
 
         res.json({
 
             success: true,
 
             message:
-                "MySQL database connected successfully",
+                "Supabase PostgreSQL database connected successfully",
 
-            data: result
+            data: result.rows
 
         });
-
 
     } catch (error) {
 
@@ -144,13 +142,14 @@ app.get("/api/test-db", async (req, res) => {
             error
         );
 
-
         res.status(500).json({
 
             success: false,
 
             message:
-                "Database connection failed"
+                "Database connection failed",
+
+            error: error.message
 
         });
 
