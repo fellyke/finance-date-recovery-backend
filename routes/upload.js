@@ -6,6 +6,7 @@
 // Handles:
 // 1. Financial Records uploads
 // 2. Repayment uploads
+// PostgreSQL / Supabase version
 // ============================================================
 
 "use strict";
@@ -319,7 +320,7 @@ router.post(
     upload.single("excelFile"),
     async (req, res) => {
 
-        let connection = null;
+        let client = null;
 
         try {
 
@@ -503,31 +504,33 @@ router.post(
 
 
             // ==================================================
-            // DATABASE CONNECTION
+            // GET POSTGRESQL CLIENT
             // ==================================================
 
-            connection =
-                await db.getConnection();
+            client = await db.connect();
 
 
-            await connection.beginTransaction();
+            // ==================================================
+            // START TRANSACTION
+            // ==================================================
+
+            await client.query("BEGIN");
+
+
+            console.log(
+                "PostgreSQL transaction started."
+            );
 
 
             // ==================================================
             // SAVE UPLOADED FILE
             // ==================================================
-            //
-            // IMPORTANT:
-            // The columns below must exist in uploaded_files.
-            //
-            // We intentionally use an explicit column list.
-            // ==================================================
 
-            const [fileResult] =
-                await connection.query(
+            const fileResult =
+                await client.query(
 
                     `
-                    INSERT INTO uploaded_files
+                    INSERT INTO public.uploaded_files
                     (
                         file_name,
                         file_path,
@@ -537,7 +540,17 @@ router.post(
                         status,
                         description
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    VALUES
+                    (
+                        $1,
+                        $2,
+                        $3,
+                        $4,
+                        $5,
+                        $6,
+                        $7
+                    )
+                    RETURNING id
                     `,
 
                     [
@@ -553,7 +566,13 @@ router.post(
 
 
             const uploadedFileId =
-                fileResult.insertId;
+                fileResult.rows[0].id;
+
+
+            console.log(
+                "Uploaded file ID:",
+                uploadedFileId
+            );
 
 
             // ==================================================
@@ -662,10 +681,10 @@ router.post(
                         );
 
 
-                    await connection.query(
+                    await client.query(
 
                         `
-                        INSERT INTO financial_records
+                        INSERT INTO public.financial_records
                         (
                             member_number,
                             member_name,
@@ -680,7 +699,21 @@ router.post(
                             status,
                             uploaded_file_id
                         )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES
+                        (
+                            $1,
+                            $2,
+                            $3,
+                            $4,
+                            $5,
+                            $6,
+                            $7,
+                            $8,
+                            $9,
+                            $10,
+                            $11,
+                            $12
+                        )
                         `,
 
                         [
@@ -798,16 +831,8 @@ router.post(
                     // ==================================================
                     // FIND FINANCIAL RECORD
                     // ==================================================
-                    //
-                    // Match repayment to financial record using
-                    // loan_number.
-                    //
-                    // If no matching financial record exists,
-                    // financial_record_id remains NULL.
-                    // ==================================================
 
-                    let financialRecordId =
-                        null;
+                    let financialRecordId = null;
 
 
                     if (
@@ -816,15 +841,13 @@ router.post(
                         String(loanNumber).trim() !== ""
                     ) {
 
-                        const [
-                            financialRows
-                        ] =
-                            await connection.query(
+                        const financialResult =
+                            await client.query(
 
                                 `
                                 SELECT id
-                                FROM financial_records
-                                WHERE loan_number = ?
+                                FROM public.financial_records
+                                WHERE loan_number = $1
                                 ORDER BY id DESC
                                 LIMIT 1
                                 `,
@@ -838,11 +861,11 @@ router.post(
 
 
                         if (
-                            financialRows.length > 0
+                            financialResult.rows.length > 0
                         ) {
 
                             financialRecordId =
-                                financialRows[0].id;
+                                financialResult.rows[0].id;
                         }
                     }
 
@@ -851,10 +874,10 @@ router.post(
                     // INSERT REPAYMENT
                     // ==================================================
 
-                    await connection.query(
+                    await client.query(
 
                         `
-                        INSERT INTO repayments
+                        INSERT INTO public.repayments
                         (
                             customer,
                             loan_number,
@@ -867,7 +890,19 @@ router.post(
                             status,
                             financial_record_id
                         )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES
+                        (
+                            $1,
+                            $2,
+                            $3,
+                            $4,
+                            $5,
+                            $6,
+                            $7,
+                            $8,
+                            $9,
+                            $10
+                        )
                         `,
 
                         [
@@ -893,14 +928,14 @@ router.post(
 
 
             // ==================================================
-            // COMMIT
+            // COMMIT TRANSACTION
             // ==================================================
 
-            await connection.commit();
+            await client.query("COMMIT");
 
 
             console.log(
-                "Upload completed successfully."
+                "PostgreSQL transaction committed."
             );
 
 
@@ -952,11 +987,15 @@ router.post(
             // ROLLBACK
             // ==================================================
 
-            if (connection) {
+            if (client) {
 
                 try {
 
-                    await connection.rollback();
+                    await client.query("ROLLBACK");
+
+                    console.log(
+                        "PostgreSQL transaction rolled back."
+                    );
 
                 } catch (rollbackError) {
 
@@ -969,7 +1008,7 @@ router.post(
 
 
             // ==================================================
-            // DELETE FAILED FILE
+            // DELETE FAILED UPLOAD FILE
             // ==================================================
 
             if (
@@ -1013,12 +1052,13 @@ router.post(
         } finally {
 
             // ==================================================
-            // RELEASE CONNECTION
+            // RELEASE POSTGRESQL CLIENT
             // ==================================================
 
-            if (connection) {
+            if (client) {
 
-                connection.release();
+                client.release();
+
             }
         }
     }
