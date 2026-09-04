@@ -1,7 +1,11 @@
+
 // ============================================================
 // FINANCE DATE RECOVERY TOOL
 // routes/auth.js
+// PostgreSQL / Supabase Authentication
 // ============================================================
+
+"use strict";
 
 const express = require("express");
 const bcrypt = require("bcryptjs");
@@ -17,7 +21,8 @@ const router = express.Router();
 // ============================================================
 
 const JWT_SECRET =
-    process.env.JWT_SECRET || "finance_date_recovery_secret";
+    process.env.JWT_SECRET ||
+    "finance_date_recovery_secret";
 
 
 // ============================================================
@@ -50,7 +55,7 @@ router.post("/login", async (req, res) => {
         // FIND ACTIVE USER
         // ----------------------------------------------------
 
-        const [users] = await db.query(
+        const result = await db.query(
             `SELECT
                 id,
                 name,
@@ -58,8 +63,8 @@ router.post("/login", async (req, res) => {
                 password,
                 role,
                 status
-             FROM users
-             WHERE username = ?
+             FROM public.users
+             WHERE username = $1
              AND status = 'Active'
              LIMIT 1`,
             [username]
@@ -70,7 +75,7 @@ router.post("/login", async (req, res) => {
         // USER NOT FOUND
         // ----------------------------------------------------
 
-        if (users.length === 0) {
+        if (result.rows.length === 0) {
 
             return res.status(401).json({
                 success: false,
@@ -80,7 +85,7 @@ router.post("/login", async (req, res) => {
         }
 
 
-        const user = users[0];
+        const user = result.rows[0];
 
 
         // ----------------------------------------------------
@@ -161,6 +166,7 @@ router.post("/login", async (req, res) => {
             error
         );
 
+
         return res.status(500).json({
 
             success: false,
@@ -175,3 +181,4 @@ router.post("/login", async (req, res) => {
 
 
 module.exports = router;
+
