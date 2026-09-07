@@ -52,7 +52,7 @@ app.use(express.json());
 
 app.use("/api", authRoutes);
 app.use("/api", recordsRoutes);
-app.use("/api/settings", settingsRoutes);
+app.use("/api", settingsRoutes);
 // ============================================================
 // USER ROUTES
 // ============================================================
