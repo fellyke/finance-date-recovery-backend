@@ -1,4 +1,3 @@
-
 "use strict";
 
 const express = require("express");
@@ -24,7 +23,7 @@ router.get(
             // GET UPLOADED FILES
             // ----------------------------------------------------
 
-            const [files] = await db.query(`
+            const result = await db.query(`
                 SELECT
                     uf.id,
 
@@ -44,9 +43,9 @@ router.get(
 
                     uf.uploaded_by,
 
-                    DATE_FORMAT(
+                    TO_CHAR(
                         uf.upload_date,
-                        '%Y-%m-%d %H:%i:%s'
+                        'YYYY-MM-DD HH24:MI:SS'
                     ) AS upload_date,
 
                     COALESCE(
@@ -59,9 +58,9 @@ router.get(
                         'Unknown'
                     ) AS user_name
 
-                FROM uploaded_files uf
+                FROM public.uploaded_files uf
 
-                LEFT JOIN users u
+                LEFT JOIN public.users u
                     ON uf.uploaded_by = u.id
 
                 ORDER BY
@@ -82,7 +81,7 @@ router.get(
                 message:
                     "Uploaded files loaded successfully.",
 
-                data: files
+                data: result.rows
 
             });
 
@@ -113,4 +112,3 @@ router.get(
 
 
 module.exports = router;
-

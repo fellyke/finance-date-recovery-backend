@@ -18,6 +18,7 @@ const path = require("path");
 const fs = require("fs");
 
 const db = require("../config/database");
+const authenticateToken = require("../middleware/auth");
 
 const router = express.Router();
 
@@ -317,6 +318,7 @@ function validateColumns(
 
 router.post(
     "/upload",
+    authenticateToken,
     upload.single("excelFile"),
     async (req, res) => {
 
@@ -357,6 +359,11 @@ router.post(
             console.log(
                 "Upload Type:",
                 req.body.uploadType
+            );
+
+            console.log(
+                "Uploaded By User ID:",
+                req.user.id
             );
 
             console.log(
@@ -516,7 +523,6 @@ router.post(
 
             await client.query("BEGIN");
 
-
             console.log(
                 "PostgreSQL transaction started."
             );
@@ -538,7 +544,11 @@ router.post(
                         file_size,
                         records,
                         status,
-                        description
+                        description,
+                        uploaded_by,
+                        logbook_name,
+                        financial_year,
+                        branch
                     )
                     VALUES
                     (
@@ -548,7 +558,11 @@ router.post(
                         $4,
                         $5,
                         $6,
-                        $7
+                        $7,
+                        $8,
+                        $9,
+                        $10,
+                        $11
                     )
                     RETURNING id
                     `,
@@ -560,7 +574,11 @@ router.post(
                         req.file.size,
                         rows.length,
                         "Completed",
-                        req.body.description || null
+                        req.body.description || null,
+                        req.user.id,
+                        req.body.logbookName || null,
+                        req.body.financialYear || null,
+                        req.body.branch || null
                     ]
                 );
 
@@ -933,7 +951,6 @@ router.post(
 
             await client.query("COMMIT");
 
-
             console.log(
                 "PostgreSQL transaction committed."
             );
@@ -1078,10 +1095,6 @@ router.use(
         );
 
 
-        // ----------------------------------------------------
-        // FILE TOO LARGE
-        // ----------------------------------------------------
-
         if (
             error instanceof multer.MulterError
         ) {
@@ -1112,10 +1125,6 @@ router.use(
             });
         }
 
-
-        // ----------------------------------------------------
-        // OTHER UPLOAD ERRORS
-        // ----------------------------------------------------
 
         return res.status(400).json({
 

@@ -33,20 +33,26 @@ router.get("/", async (req, res) => {
         } = req.query;
 
 
+        // ----------------------------------------------------
+        // BASE QUERY
+        // ----------------------------------------------------
+
         let sql = `
-           SELECT
-    id,
-    customer,
-    loan_number,
-    repayment_date,
-    amount,
-    payment_method,
-    reference_number,
-    receipt_number,
-    balance,
-    status,
-    created_at
-    FROM repayments
+            SELECT
+                id,
+                customer,
+                loan_number,
+                repayment_date,
+                amount,
+                payment_method,
+                reference_number,
+                receipt_number,
+                balance,
+                status,
+                created_at,
+                updated_at
+            FROM public.repayments
+            WHERE 1 = 1
         `;
 
         const values = [];
@@ -58,11 +64,11 @@ router.get("/", async (req, res) => {
 
         if (customer) {
 
-            sql += `
-                AND customer LIKE ?
-            `;
-
             values.push(`%${customer}%`);
+
+            sql += `
+                AND customer ILIKE $${values.length}
+            `;
         }
 
 
@@ -72,11 +78,11 @@ router.get("/", async (req, res) => {
 
         if (loanNumber) {
 
-            sql += `
-                AND loan_number LIKE ?
-            `;
-
             values.push(`%${loanNumber}%`);
+
+            sql += `
+                AND loan_number ILIKE $${values.length}
+            `;
         }
 
 
@@ -86,11 +92,11 @@ router.get("/", async (req, res) => {
 
         if (referenceNumber) {
 
-            sql += `
-                AND reference_number LIKE ?
-            `;
-
             values.push(`%${referenceNumber}%`);
+
+            sql += `
+                AND reference_number ILIKE $${values.length}
+            `;
         }
 
 
@@ -100,11 +106,11 @@ router.get("/", async (req, res) => {
 
         if (receiptNumber) {
 
-            sql += `
-                AND receipt_number LIKE ?
-            `;
-
             values.push(`%${receiptNumber}%`);
+
+            sql += `
+                AND receipt_number ILIKE $${values.length}
+            `;
         }
 
 
@@ -112,13 +118,13 @@ router.get("/", async (req, res) => {
         // AMOUNT
         // ----------------------------------------------------
 
-        if (amount) {
-
-            sql += `
-                AND amount = ?
-            `;
+        if (amount !== undefined && amount !== "") {
 
             values.push(amount);
+
+            sql += `
+                AND amount = $${values.length}
+            `;
         }
 
 
@@ -128,11 +134,11 @@ router.get("/", async (req, res) => {
 
         if (paymentMethod) {
 
-            sql += `
-                AND payment_method = ?
-            `;
-
             values.push(paymentMethod);
+
+            sql += `
+                AND payment_method = $${values.length}
+            `;
         }
 
 
@@ -142,11 +148,11 @@ router.get("/", async (req, res) => {
 
         if (dateFrom) {
 
-            sql += `
-                AND repayment_date >= ?
-            `;
-
             values.push(dateFrom);
+
+            sql += `
+                AND repayment_date >= $${values.length}
+            `;
         }
 
 
@@ -156,11 +162,11 @@ router.get("/", async (req, res) => {
 
         if (dateTo) {
 
-            sql += `
-                AND repayment_date <= ?
-            `;
-
             values.push(dateTo);
+
+            sql += `
+                AND repayment_date <= $${values.length}
+            `;
         }
 
 
@@ -169,7 +175,9 @@ router.get("/", async (req, res) => {
         // ----------------------------------------------------
 
         sql += `
-            ORDER BY repayment_date DESC, id DESC
+            ORDER BY
+                repayment_date DESC NULLS LAST,
+                id DESC
         `;
 
 
@@ -177,16 +185,19 @@ router.get("/", async (req, res) => {
         // EXECUTE QUERY
         // ----------------------------------------------------
 
-        const [rows] = await db.execute(sql, values);
+        const result = await db.query(sql, values);
 
 
         // ----------------------------------------------------
         // RESPONSE
         // ----------------------------------------------------
 
-        res.json({
+        return res.status(200).json({
+
             success: true,
-            data: rows
+
+            data: result.rows
+
         });
 
     } catch (error) {
@@ -196,9 +207,13 @@ router.get("/", async (req, res) => {
             error
         );
 
-        res.status(500).json({
+        return res.status(500).json({
+
             success: false,
-            message: "Unable to load repayment records."
+
+            message:
+                "Unable to load repayment records."
+
         });
     }
 
@@ -217,7 +232,7 @@ router.get("/:id", async (req, res) => {
         const { id } = req.params;
 
 
-        const [rows] = await db.execute(
+        const result = await db.query(
             `
             SELECT
                 id,
@@ -232,26 +247,33 @@ router.get("/:id", async (req, res) => {
                 status,
                 created_at,
                 updated_at
-            FROM repayments
-            WHERE id = ?
+            FROM public.repayments
+            WHERE id = $1
             `,
             [id]
         );
 
 
-        if (rows.length === 0) {
+        if (result.rows.length === 0) {
 
             return res.status(404).json({
+
                 success: false,
-                message: "Repayment record not found."
+
+                message:
+                    "Repayment record not found."
+
             });
 
         }
 
 
-        res.json({
+        return res.status(200).json({
+
             success: true,
-            data: rows[0]
+
+            data: result.rows[0]
+
         });
 
     } catch (error) {
@@ -261,9 +283,13 @@ router.get("/:id", async (req, res) => {
             error
         );
 
-        res.status(500).json({
+        return res.status(500).json({
+
             success: false,
-            message: "Unable to load repayment record."
+
+            message:
+                "Unable to load repayment record."
+
         });
     }
 
@@ -299,8 +325,12 @@ router.post("/", async (req, res) => {
         if (!customer || !loan_number) {
 
             return res.status(400).json({
+
                 success: false,
-                message: "Customer and loan number are required."
+
+                message:
+                    "Customer and loan number are required."
+
             });
 
         }
@@ -310,9 +340,9 @@ router.post("/", async (req, res) => {
         // INSERT
         // ----------------------------------------------------
 
-        const [result] = await db.execute(
+        const result = await db.query(
             `
-            INSERT INTO repayments (
+            INSERT INTO public.repayments (
                 customer,
                 loan_number,
                 repayment_date,
@@ -323,7 +353,30 @@ router.post("/", async (req, res) => {
                 balance,
                 status
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (
+                $1,
+                $2,
+                $3,
+                $4,
+                $5,
+                $6,
+                $7,
+                $8,
+                $9
+            )
+            RETURNING
+                id,
+                customer,
+                loan_number,
+                repayment_date,
+                amount,
+                payment_method,
+                reference_number,
+                receipt_number,
+                balance,
+                status,
+                created_at,
+                updated_at
             `,
             [
                 customer,
@@ -343,12 +396,15 @@ router.post("/", async (req, res) => {
         // RESPONSE
         // ----------------------------------------------------
 
-        res.status(201).json({
+        return res.status(201).json({
+
             success: true,
-            message: "Repayment created successfully.",
-            data: {
-                id: result.insertId
-            }
+
+            message:
+                "Repayment created successfully.",
+
+            data: result.rows[0]
+
         });
 
     } catch (error) {
@@ -358,9 +414,13 @@ router.post("/", async (req, res) => {
             error
         );
 
-        res.status(500).json({
+        return res.status(500).json({
+
             success: false,
-            message: "Unable to create repayment record."
+
+            message:
+                "Unable to create repayment record."
+
         });
     }
 
@@ -395,21 +455,25 @@ router.put("/:id", async (req, res) => {
         // CHECK RECORD
         // ----------------------------------------------------
 
-        const [existing] = await db.execute(
+        const existing = await db.query(
             `
             SELECT id
-            FROM repayments
-            WHERE id = ?
+            FROM public.repayments
+            WHERE id = $1
             `,
             [id]
         );
 
 
-        if (existing.length === 0) {
+        if (existing.rows.length === 0) {
 
             return res.status(404).json({
+
                 success: false,
-                message: "Repayment record not found."
+
+                message:
+                    "Repayment record not found."
+
             });
 
         }
@@ -419,20 +483,34 @@ router.put("/:id", async (req, res) => {
         // UPDATE
         // ----------------------------------------------------
 
-        await db.execute(
+        const result = await db.query(
             `
-            UPDATE repayments
+            UPDATE public.repayments
             SET
-                customer = ?,
-                loan_number = ?,
-                repayment_date = ?,
-                amount = ?,
-                payment_method = ?,
-                reference_number = ?,
-                receipt_number = ?,
-                balance = ?,
-                status = ?
-            WHERE id = ?
+                customer = $1,
+                loan_number = $2,
+                repayment_date = $3,
+                amount = $4,
+                payment_method = $5,
+                reference_number = $6,
+                receipt_number = $7,
+                balance = $8,
+                status = $9,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $10
+            RETURNING
+                id,
+                customer,
+                loan_number,
+                repayment_date,
+                amount,
+                payment_method,
+                reference_number,
+                receipt_number,
+                balance,
+                status,
+                created_at,
+                updated_at
             `,
             [
                 customer,
@@ -449,9 +527,15 @@ router.put("/:id", async (req, res) => {
         );
 
 
-        res.json({
+        return res.status(200).json({
+
             success: true,
-            message: "Repayment updated successfully."
+
+            message:
+                "Repayment updated successfully.",
+
+            data: result.rows[0]
+
         });
 
     } catch (error) {
@@ -461,9 +545,13 @@ router.put("/:id", async (req, res) => {
             error
         );
 
-        res.status(500).json({
+        return res.status(500).json({
+
             success: false,
-            message: "Unable to update repayment record."
+
+            message:
+                "Unable to update repayment record."
+
         });
     }
 
@@ -482,28 +570,48 @@ router.delete("/:id", async (req, res) => {
         const { id } = req.params;
 
 
-        const [result] = await db.execute(
+        // ----------------------------------------------------
+        // DELETE
+        // ----------------------------------------------------
+
+        const result = await db.query(
             `
-            DELETE FROM repayments
-            WHERE id = ?
+            DELETE FROM public.repayments
+            WHERE id = $1
             `,
             [id]
         );
 
 
-        if (result.affectedRows === 0) {
+        // ----------------------------------------------------
+        // CHECK IF RECORD EXISTED
+        // ----------------------------------------------------
+
+        if (result.rowCount === 0) {
 
             return res.status(404).json({
+
                 success: false,
-                message: "Repayment record not found."
+
+                message:
+                    "Repayment record not found."
+
             });
 
         }
 
 
-        res.json({
+        // ----------------------------------------------------
+        // RESPONSE
+        // ----------------------------------------------------
+
+        return res.status(200).json({
+
             success: true,
-            message: "Repayment deleted successfully."
+
+            message:
+                "Repayment deleted successfully."
+
         });
 
     } catch (error) {
@@ -513,9 +621,13 @@ router.delete("/:id", async (req, res) => {
             error
         );
 
-        res.status(500).json({
+        return res.status(500).json({
+
             success: false,
-            message: "Unable to delete repayment record."
+
+            message:
+                "Unable to delete repayment record."
+
         });
     }
 

@@ -1,4 +1,3 @@
-
 // ============================================================
 // FINANCE DATE RECOVERY TOOL
 // routes/history.js
@@ -29,23 +28,8 @@ router.get(
             // ==================================================
             // GET RECOVERY HISTORY
             // ==================================================
-            //
-            // recovery_history:
-            //
-            // id
-            // search_term
-            // member_number
-            // member_name
-            // loan_number
-            // transaction_reference
-            // result
-            // records_found
-            // searched_by
-            // search_date
-            //
-            // ==================================================
 
-            const [history] = await db.query(`
+            const result = await db.query(`
                 SELECT
                     rh.id,
 
@@ -73,24 +57,25 @@ router.get(
                         'Unknown'
                     ) AS user_name,
 
-                    DATE_FORMAT(
+                    TO_CHAR(
                         rh.search_date,
-                        '%Y-%m-%d'
+                        'YYYY-MM-DD'
                     ) AS recovery_date,
 
-                    DATE_FORMAT(
+                    TO_CHAR(
                         rh.search_date,
-                        '%H:%i:%s'
+                        'HH24:MI:SS'
                     ) AS recovery_time,
 
                     rh.search_date
 
-                FROM recovery_history rh
+                FROM public.recovery_history rh
 
-                LEFT JOIN users u
+                LEFT JOIN public.users u
                     ON rh.searched_by = u.id
 
-                ORDER BY rh.search_date DESC
+                ORDER BY
+                    rh.search_date DESC
 
                 LIMIT 100
             `);
@@ -107,7 +92,7 @@ router.get(
                 message:
                     "Recovery history loaded successfully.",
 
-                data: history
+                data: result.rows
 
             });
 
@@ -142,4 +127,3 @@ router.get(
 // ============================================================
 
 module.exports = router;
-
