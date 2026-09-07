@@ -24,7 +24,7 @@ const authRoutes = require("./routes/auth");
 const dashboardRoutes = require("./routes/dashboard");
 const historyRoutes = require("./routes/history");
 const uploadedFilesRoutes = require("./routes/uploaded-files");
-
+const recordsRoutes = require("./routes/records");
 // REPAYMENTS ROUTE
 const repaymentsRoutes = require("./routes/repayments");
 
@@ -50,7 +50,7 @@ app.use(express.json());
 // ============================================================
 
 app.use("/api", authRoutes);
-
+app.use("/api", recordsRoutes);
 
 // ============================================================
 // USER ROUTES
