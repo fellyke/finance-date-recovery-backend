@@ -1,13 +1,3 @@
-// ============================================================
-// FINANCE DATE RECOVERY TOOL
-// BACKEND - UPLOAD ROUTE
-// routes/upload.js
-//
-// Handles:
-// 1. Financial Records uploads
-// 2. Repayment uploads
-// PostgreSQL / Supabase version
-// ============================================================
 
 "use strict";
 
@@ -74,6 +64,56 @@ const upload = multer({
         }
     }
 });
+
+
+// ============================================================
+// NORMALIZE COLUMN NAME
+//
+// This fixes problems caused by:
+// - Extra spaces
+// - Multiple spaces
+// - Hidden characters
+// - Non-breaking spaces
+// - Different capitalization
+// ============================================================
+
+function normalizeColumnName(value) {
+
+    return String(value || "")
+        .replace(/\u00A0/g, " ")
+        .replace(/\r/g, " ")
+        .replace(/\n/g, " ")
+        .replace(/\t/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+}
+
+
+// ============================================================
+// NORMALIZE LOAN NUMBER
+// ============================================================
+
+function normalizeLoanNumber(value) {
+
+    if (
+        value === null ||
+        value === undefined ||
+        value === ""
+    ) {
+        return null;
+    }
+
+    let result = String(value).trim();
+
+    // Excel can convert values such as 12345 to numbers
+    // and sometimes produce 12345.0
+    if (/^\d+\.0$/.test(result)) {
+        result = result.replace(".0", "");
+    }
+
+    return result || null;
+}
 
 
 // ============================================================
@@ -164,6 +204,52 @@ function convertExcelDate(value) {
         }
 
 
+        // DD/MM/YYYY
+
+        const slashDate =
+            trimmed.match(
+                /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/
+            );
+
+        if (slashDate) {
+
+            const day =
+                slashDate[1].padStart(2, "0");
+
+            const month =
+                slashDate[2].padStart(2, "0");
+
+            const year =
+                slashDate[3];
+
+            return `${year}-${month}-${day}`;
+        }
+
+
+        // DD-MM-YYYY
+
+        const dashDate =
+            trimmed.match(
+                /^(\d{1,2})-(\d{1,2})-(\d{4})$/
+            );
+
+        if (dashDate) {
+
+            const day =
+                dashDate[1].padStart(2, "0");
+
+            const month =
+                dashDate[2].padStart(2, "0");
+
+            const year =
+                dashDate[3];
+
+            return `${year}-${month}-${day}`;
+        }
+
+
+        // Other valid JavaScript date strings
+
         const date =
             new Date(trimmed);
 
@@ -209,6 +295,7 @@ function convertNumber(value) {
         String(value)
             .replace(/,/g, "")
             .replace(/KES/gi, "")
+            .replace(/KSH/gi, "")
             .trim();
 
 
@@ -223,19 +310,59 @@ function convertNumber(value) {
 
 
 // ============================================================
+// CREATE NORMALIZED ROW
+//
+// Converts:
+// "Payment   Method"
+// " payment method "
+// "PAYMENT METHOD"
+// "Payment\u00A0Method"
+//
+// Into the same key:
+// "payment method"
+// ============================================================
+
+function normalizeRow(row) {
+
+    const normalizedRow = {};
+
+    Object.keys(row).forEach(originalKey => {
+
+        const normalizedKey =
+            normalizeColumnName(
+                originalKey
+            );
+
+        normalizedRow[normalizedKey] =
+            row[originalKey];
+    });
+
+    return normalizedRow;
+}
+
+
+// ============================================================
 // GET VALUE FROM ROW
 // ============================================================
 
-function getRowValue(row, columnName) {
+function getRowValue(
+    row,
+    columnName
+) {
+
+    const normalizedColumn =
+        normalizeColumnName(
+            columnName
+        );
 
     if (
         Object.prototype.hasOwnProperty.call(
             row,
-            columnName
+            normalizedColumn
         )
     ) {
 
-        return row[columnName];
+        return row[normalizedColumn];
     }
 
     return "";
@@ -253,11 +380,9 @@ function normalizeStatus(value) {
             .trim()
             .toLowerCase();
 
-
     if (status === "verified") {
         return "Verified";
     }
-
 
     return "Unverified";
 }
@@ -272,11 +397,15 @@ function validateColumns(
     requiredColumns
 ) {
 
-    if (!rows || rows.length === 0) {
+    if (
+        !rows ||
+        rows.length === 0
+    ) {
 
         return {
             valid: false,
-            missing: requiredColumns
+            missing: requiredColumns,
+            actual: []
         };
     }
 
@@ -288,9 +417,9 @@ function validateColumns(
     const normalizedActual =
         actualColumns.map(
             column =>
-                String(column)
-                    .trim()
-                    .toLowerCase()
+                normalizeColumnName(
+                    column
+                )
         );
 
 
@@ -298,16 +427,23 @@ function validateColumns(
         requiredColumns.filter(
             requiredColumn =>
                 !normalizedActual.includes(
-                    requiredColumn
-                        .trim()
-                        .toLowerCase()
+                    normalizeColumnName(
+                        requiredColumn
+                    )
                 )
         );
 
 
     return {
-        valid: missing.length === 0,
-        missing
+
+        valid:
+            missing.length === 0,
+
+        missing,
+
+        actual:
+            actualColumns
+
     };
 }
 
@@ -344,7 +480,7 @@ router.post(
 
 
             console.log(
-                "-----------------------------------------"
+                "========================================="
             );
 
             console.log(
@@ -367,7 +503,7 @@ router.post(
             );
 
             console.log(
-                "-----------------------------------------"
+                "========================================="
             );
 
 
@@ -422,7 +558,7 @@ router.post(
                 ];
 
 
-            const rows =
+            const rawRows =
                 XLSX.utils.sheet_to_json(
                     sheet,
                     {
@@ -436,7 +572,10 @@ router.post(
             // CHECK RECORDS
             // ==================================================
 
-            if (rows.length === 0) {
+            if (
+                !rawRows ||
+                rawRows.length === 0
+            ) {
 
                 throw new Error(
                     "The uploaded Excel file contains no records."
@@ -444,8 +583,25 @@ router.post(
             }
 
 
+            // ==================================================
+            // NORMALIZE ALL ROWS
+            // ==================================================
+
+            const rows =
+                rawRows.map(
+                    row =>
+                        normalizeRow(row)
+                );
+
+
             console.log(
                 `Records found: ${rows.length}`
+            );
+
+
+            console.log(
+                "Detected columns:",
+                Object.keys(rows[0])
             );
 
 
@@ -504,24 +660,48 @@ router.post(
 
             if (!columnValidation.valid) {
 
+                console.error(
+                    "Missing columns:",
+                    columnValidation.missing
+                );
+
+                console.error(
+                    "Actual columns:",
+                    columnValidation.actual
+                );
+
+
                 throw new Error(
-                    `Missing required column(s): ${columnValidation.missing.join(", ")}`
+
+                    `Missing required column(s): ${columnValidation.missing.join(", ")}. ` +
+
+                    `Detected columns: ${columnValidation.actual.join(", ")}`
+
                 );
             }
+
+
+            console.log(
+                "Column validation successful."
+            );
 
 
             // ==================================================
             // GET POSTGRESQL CLIENT
             // ==================================================
 
-            client = await db.connect();
+            client =
+                await db.connect();
 
 
             // ==================================================
             // START TRANSACTION
             // ==================================================
 
-            await client.query("BEGIN");
+            await client.query(
+                "BEGIN"
+            );
+
 
             console.log(
                 "PostgreSQL transaction started."
@@ -569,16 +749,30 @@ router.post(
 
                     [
                         req.file.originalname,
+
                         req.file.path,
+
                         req.file.mimetype,
+
                         req.file.size,
+
                         rows.length,
+
                         "Completed",
-                        req.body.description || null,
+
+                        req.body.description ||
+                            null,
+
                         req.user.id,
-                        req.body.logbookName || null,
-                        req.body.financialYear || null,
-                        req.body.branch || null
+
+                        req.body.logbookName ||
+                            null,
+
+                        req.body.financialYear ||
+                            null,
+
+                        req.body.branch ||
+                            null
                     ]
                 );
 
@@ -598,7 +792,8 @@ router.post(
             // ==================================================
 
             if (
-                uploadType === "financial_records"
+                uploadType ===
+                "financial_records"
             ) {
 
                 console.log(
@@ -625,9 +820,11 @@ router.post(
 
 
                     const loanNumber =
-                        getRowValue(
-                            row,
-                            "Loan Number"
+                        normalizeLoanNumber(
+                            getRowValue(
+                                row,
+                                "Loan Number"
+                            )
                         );
 
 
@@ -736,16 +933,28 @@ router.post(
 
                         [
                             memberNumber || null,
+
                             memberName || null,
-                            loanNumber || null,
+
+                            loanNumber,
+
                             loanType || null,
+
                             loanAmount,
+
                             loanDate,
+
                             repaymentDate,
+
                             maturityDate,
+
                             transactionDate,
-                            transactionReference || null,
+
+                            transactionReference ||
+                                null,
+
                             status,
+
                             uploadedFileId
                         ]
                     );
@@ -763,7 +972,8 @@ router.post(
             // ==================================================
 
             if (
-                uploadType === "repayments"
+                uploadType ===
+                "repayments"
             ) {
 
                 console.log(
@@ -783,9 +993,11 @@ router.post(
 
 
                     const loanNumber =
-                        getRowValue(
-                            row,
-                            "Loan Number"
+                        normalizeLoanNumber(
+                            getRowValue(
+                                row,
+                                "Loan Number"
+                            )
                         );
 
 
@@ -850,13 +1062,12 @@ router.post(
                     // FIND FINANCIAL RECORD
                     // ==================================================
 
-                    let financialRecordId = null;
+                    let financialRecordId =
+                        null;
 
 
                     if (
-                        loanNumber !== null &&
-                        loanNumber !== undefined &&
-                        String(loanNumber).trim() !== ""
+                        loanNumber
                     ) {
 
                         const financialResult =
@@ -865,25 +1076,26 @@ router.post(
                                 `
                                 SELECT id
                                 FROM public.financial_records
-                                WHERE loan_number = $1
+                                WHERE TRIM(CAST(loan_number AS TEXT)) = $1
                                 ORDER BY id DESC
                                 LIMIT 1
                                 `,
 
                                 [
-                                    String(
-                                        loanNumber
-                                    ).trim()
+                                    loanNumber
                                 ]
                             );
 
 
                         if (
-                            financialResult.rows.length > 0
+                            financialResult.rows.length >
+                            0
                         ) {
 
                             financialRecordId =
-                                financialResult.rows[0].id;
+                                financialResult
+                                    .rows[0]
+                                    .id;
                         }
                     }
 
@@ -925,14 +1137,23 @@ router.post(
 
                         [
                             customer || null,
-                            loanNumber || null,
+
+                            loanNumber,
+
                             repaymentDate,
+
                             amount,
+
                             paymentMethod || null,
+
                             referenceNumber || null,
+
                             receiptNumber || null,
+
                             balance,
+
                             status,
+
                             financialRecordId
                         ]
                     );
@@ -949,7 +1170,10 @@ router.post(
             // COMMIT TRANSACTION
             // ==================================================
 
-            await client.query("COMMIT");
+            await client.query(
+                "COMMIT"
+            );
+
 
             console.log(
                 "PostgreSQL transaction committed."
@@ -966,7 +1190,9 @@ router.post(
 
                 message:
                     uploadType === "repayments"
+
                         ? "Repayment file uploaded successfully."
+
                         : "Financial records file uploaded successfully.",
 
                 data: {
@@ -995,8 +1221,19 @@ router.post(
             // ==================================================
 
             console.error(
-                "UPLOAD ERROR:",
+                "========================================="
+            );
+
+            console.error(
+                "UPLOAD ERROR:"
+            );
+
+            console.error(
                 error
+            );
+
+            console.error(
+                "========================================="
             );
 
 
@@ -1008,13 +1245,17 @@ router.post(
 
                 try {
 
-                    await client.query("ROLLBACK");
+                    await client.query(
+                        "ROLLBACK"
+                    );
 
                     console.log(
                         "PostgreSQL transaction rolled back."
                     );
 
-                } catch (rollbackError) {
+                } catch (
+                    rollbackError
+                ) {
 
                     console.error(
                         "ROLLBACK ERROR:",
@@ -1042,7 +1283,9 @@ router.post(
                         req.file.path
                     );
 
-                } catch (deleteError) {
+                } catch (
+                    deleteError
+                ) {
 
                     console.error(
                         "FILE DELETE ERROR:",
@@ -1075,7 +1318,6 @@ router.post(
             if (client) {
 
                 client.release();
-
             }
         }
     }
@@ -1096,7 +1338,8 @@ router.use(
 
 
         if (
-            error instanceof multer.MulterError
+            error instanceof
+            multer.MulterError
         ) {
 
             if (
@@ -1144,3 +1387,4 @@ router.use(
 // ============================================================
 
 module.exports = router;
+
