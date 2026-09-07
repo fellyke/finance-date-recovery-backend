@@ -23,9 +23,9 @@ router.get(
             // 1. TOTAL FINANCIAL RECORDS
             // ----------------------------------------------------
 
-            const [totalRecordsResult] = await db.query(`
-                SELECT COUNT(*) AS totalRecords
-                FROM financial_records
+            const totalRecordsResult = await db.query(`
+                SELECT COUNT(*) AS "totalRecords"
+                FROM public.financial_records
             `);
 
 
@@ -33,9 +33,9 @@ router.get(
             // 2. TOTAL UPLOADED FILES
             // ----------------------------------------------------
 
-            const [uploadedFilesResult] = await db.query(`
-                SELECT COUNT(*) AS uploadedFiles
-                FROM uploaded_files
+            const uploadedFilesResult = await db.query(`
+                SELECT COUNT(*) AS "uploadedFiles"
+                FROM public.uploaded_files
             `);
 
 
@@ -46,9 +46,9 @@ router.get(
             // with result = 'Recovered'
             // ----------------------------------------------------
 
-            const [recoveredRecordsResult] = await db.query(`
-                SELECT COUNT(*) AS recoveredRecords
-                FROM recovery_history
+            const recoveredRecordsResult = await db.query(`
+                SELECT COUNT(*) AS "recoveredRecords"
+                FROM public.recovery_history
                 WHERE result = 'Recovered'
             `);
 
@@ -57,9 +57,9 @@ router.get(
             // 4. TOTAL PENDING RECORDS
             // ----------------------------------------------------
 
-            const [pendingRecordsResult] = await db.query(`
-                SELECT COUNT(*) AS pendingRecords
-                FROM financial_records
+            const pendingRecordsResult = await db.query(`
+                SELECT COUNT(*) AS "pendingRecords"
+                FROM public.financial_records
                 WHERE status = 'Pending'
             `);
 
@@ -68,7 +68,7 @@ router.get(
             // 5. RECENT UPLOADS
             // ----------------------------------------------------
 
-            const [recentUploads] = await db.query(`
+            const recentUploadsResult = await db.query(`
                 SELECT
                     uf.id,
                     uf.file_name,
@@ -77,24 +77,24 @@ router.get(
                     uf.file_size,
                     uf.status,
 
-                    DATE_FORMAT(
+                    TO_CHAR(
                         uf.upload_date,
-                        '%Y-%m-%d %H:%i:%s'
+                        'YYYY-MM-DD HH24:MI:SS'
                     ) AS date,
 
                     COALESCE(
                         u.username,
                         'Unknown'
-                    ) AS user,
+                    ) AS "user",
 
                     COALESCE(
                         u.name,
                         'Unknown'
                     ) AS user_name
 
-                FROM uploaded_files uf
+                FROM public.uploaded_files uf
 
-                LEFT JOIN users u
+                LEFT JOIN public.users u
                     ON uf.uploaded_by = u.id
 
                 ORDER BY uf.upload_date DESC
@@ -107,7 +107,7 @@ router.get(
             // 6. RECENT RECOVERY SEARCHES
             // ----------------------------------------------------
 
-            const [recentSearches] = await db.query(`
+            const recentSearchesResult = await db.query(`
                 SELECT
                     rh.id,
 
@@ -146,28 +146,28 @@ router.get(
                     COALESCE(
                         u.username,
                         'Unknown'
-                    ) AS user,
+                    ) AS "user",
 
                     COALESCE(
                         u.name,
                         'Unknown'
                     ) AS user_name,
 
-                    DATE_FORMAT(
+                    TO_CHAR(
                         rh.search_date,
-                        '%Y-%m-%d'
+                        'YYYY-MM-DD'
                     ) AS date,
 
-                    DATE_FORMAT(
+                    TO_CHAR(
                         rh.search_date,
-                        '%H:%i:%s'
+                        'HH24:MI:SS'
                     ) AS time,
 
                     rh.search_date
 
-                FROM recovery_history rh
+                FROM public.recovery_history rh
 
-                LEFT JOIN users u
+                LEFT JOIN public.users u
                     ON rh.searched_by = u.id
 
                 ORDER BY rh.search_date DESC
@@ -180,7 +180,7 @@ router.get(
             // 7. RECENT FINANCIAL RECORDS
             // ----------------------------------------------------
 
-            const [recentRecords] = await db.query(`
+            const recentRecordsResult = await db.query(`
                 SELECT
                     id,
                     member_number,
@@ -196,7 +196,7 @@ router.get(
                     status,
                     created_at
 
-                FROM financial_records
+                FROM public.financial_records
 
                 ORDER BY created_at DESC
 
@@ -205,7 +205,21 @@ router.get(
 
 
             // ----------------------------------------------------
-            // 8. SEND DASHBOARD RESPONSE
+            // EXTRACT ROWS
+            // ----------------------------------------------------
+
+            const recentUploads =
+                recentUploadsResult.rows;
+
+            const recentSearches =
+                recentSearchesResult.rows;
+
+            const recentRecords =
+                recentRecordsResult.rows;
+
+
+            // ----------------------------------------------------
+            // SEND DASHBOARD RESPONSE
             // ----------------------------------------------------
 
             return res.status(200).json({
@@ -219,25 +233,25 @@ router.get(
 
                     totalRecords:
                         Number(
-                            totalRecordsResult[0]
+                            totalRecordsResult.rows[0]
                                 .totalRecords
                         ),
 
                     uploadedFiles:
                         Number(
-                            uploadedFilesResult[0]
+                            uploadedFilesResult.rows[0]
                                 .uploadedFiles
                         ),
 
                     recoveredRecords:
                         Number(
-                            recoveredRecordsResult[0]
+                            recoveredRecordsResult.rows[0]
                                 .recoveredRecords
                         ),
 
                     pendingRecords:
                         Number(
-                            pendingRecordsResult[0]
+                            pendingRecordsResult.rows[0]
                                 .pendingRecords
                         ),
 

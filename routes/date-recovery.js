@@ -1,4 +1,3 @@
-
 // ============================================================
 // FINANCE DATE RECOVERY TOOL
 // DATE RECOVERY API
@@ -12,6 +11,7 @@ const router = express.Router();
 
 const db = require("../config/database");
 const authenticateToken = require("../middleware/auth");
+
 
 // ============================================================
 // SEARCH / RECOVER FINANCIAL RECORD
@@ -62,21 +62,18 @@ router.get(
 
 
             // ----------------------------------------------------
-            // BUILD SEARCH QUERY
+            // BUILD POSTGRESQL SEARCH QUERY
             // ----------------------------------------------------
 
-            let conditions = [];
-            let values = [];
-
+            const conditions = [];
+            const values = [];
 
             if (memberNumber) {
 
-                conditions.push(
-                    "member_number LIKE ?"
-                );
+                values.push(`%${memberNumber}%`);
 
-                values.push(
-                    `%${memberNumber}%`
+                conditions.push(
+                    `member_number ILIKE $${values.length}`
                 );
 
             }
@@ -84,12 +81,10 @@ router.get(
 
             if (memberName) {
 
-                conditions.push(
-                    "member_name LIKE ?"
-                );
+                values.push(`%${memberName}%`);
 
-                values.push(
-                    `%${memberName}%`
+                conditions.push(
+                    `member_name ILIKE $${values.length}`
                 );
 
             }
@@ -97,29 +92,27 @@ router.get(
 
             if (loanNumber) {
 
-                conditions.push(
-                    "loan_number LIKE ?"
-                );
+                values.push(`%${loanNumber}%`);
 
-                values.push(
-                    `%${loanNumber}%`
+                conditions.push(
+                    `loan_number ILIKE $${values.length}`
                 );
 
             }
 
 
+            // ----------------------------------------------------
             // IMPORTANT:
-            // financial_records uses transaction_reference,
+            // financial_records uses transaction_reference
             // NOT transaction_number.
+            // ----------------------------------------------------
 
             if (transactionNumber) {
 
-                conditions.push(
-                    "transaction_reference LIKE ?"
-                );
+                values.push(`%${transactionNumber}%`);
 
-                values.push(
-                    `%${transactionNumber}%`
+                conditions.push(
+                    `transaction_reference ILIKE $${values.length}`
                 );
 
             }
@@ -132,27 +125,29 @@ router.get(
             const sql = `
                 SELECT
                     id,
-                    member_number AS memberNumber,
-                    member_name AS memberName,
-                    loan_number AS loanNumber,
-                    loan_type AS loanType,
-                    loan_amount AS loanAmount,
-                    loan_date AS loanDate,
-                    transaction_date AS transactionDate,
-                    repayment_date AS repaymentDate,
-                    maturity_date AS maturityDate,
-                    transaction_reference AS transactionReference,
+                    member_number AS "memberNumber",
+                    member_name AS "memberName",
+                    loan_number AS "loanNumber",
+                    loan_type AS "loanType",
+                    loan_amount AS "loanAmount",
+                    loan_date AS "loanDate",
+                    transaction_date AS "transactionDate",
+                    repayment_date AS "repaymentDate",
+                    maturity_date AS "maturityDate",
+                    transaction_reference AS "transactionReference",
                     status
-                FROM financial_records
+                FROM public.financial_records
                 WHERE ${conditions.join(" OR ")}
                 ORDER BY id DESC
             `;
 
 
-            const [rows] = await db.query(
+            const result = await db.query(
                 sql,
                 values
             );
+
+            const rows = result.rows;
 
 
             // ----------------------------------------------------
@@ -176,14 +171,14 @@ router.get(
 
                 await db.query(
                     `
-                    INSERT INTO recovery_history
+                    INSERT INTO public.recovery_history
                     (
                         search_term,
                         result,
                         records_found,
                         searched_by
                     )
-                    VALUES (?, ?, ?, ?)
+                    VALUES ($1, $2, $3, $4)
                     `,
                     [
                         searchTerm,
@@ -212,7 +207,7 @@ router.get(
 
             await db.query(
                 `
-                INSERT INTO recovery_history
+                INSERT INTO public.recovery_history
                 (
                     search_term,
                     member_number,
@@ -223,7 +218,7 @@ router.get(
                     records_found,
                     searched_by
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 `,
                 [
                     searchTerm,
@@ -323,27 +318,29 @@ router.get(
             const sql = `
                 SELECT
                     id,
-                    member_number AS memberNumber,
-                    member_name AS memberName,
-                    loan_number AS loanNumber,
-                    loan_type AS loanType,
-                    loan_amount AS loanAmount,
-                    loan_date AS loanDate,
-                    transaction_date AS transactionDate,
-                    repayment_date AS repaymentDate,
-                    maturity_date AS maturityDate,
-                    transaction_reference AS transactionReference,
+                    member_number AS "memberNumber",
+                    member_name AS "memberName",
+                    loan_number AS "loanNumber",
+                    loan_type AS "loanType",
+                    loan_amount AS "loanAmount",
+                    loan_date AS "loanDate",
+                    transaction_date AS "transactionDate",
+                    repayment_date AS "repaymentDate",
+                    maturity_date AS "maturityDate",
+                    transaction_reference AS "transactionReference",
                     status
-                FROM financial_records
-                WHERE id = ?
+                FROM public.financial_records
+                WHERE id = $1
                 LIMIT 1
             `;
 
 
-            const [rows] = await db.query(
+            const result = await db.query(
                 sql,
                 [id]
             );
+
+            const rows = result.rows;
 
 
             // ----------------------------------------------------
@@ -414,6 +411,7 @@ router.get(
 //
 // This endpoint returns the financial dates and records the
 // successful recovery in recovery_history.
+//
 // ============================================================
 
 router.get(
@@ -451,25 +449,27 @@ router.get(
             const sql = `
                 SELECT
                     id,
-                    member_number AS memberNumber,
-                    member_name AS memberName,
-                    loan_number AS loanNumber,
-                    loan_date AS loanDate,
-                    transaction_date AS transactionDate,
-                    repayment_date AS repaymentDate,
-                    maturity_date AS maturityDate,
-                    transaction_reference AS transactionReference,
+                    member_number AS "memberNumber",
+                    member_name AS "memberName",
+                    loan_number AS "loanNumber",
+                    loan_date AS "loanDate",
+                    transaction_date AS "transactionDate",
+                    repayment_date AS "repaymentDate",
+                    maturity_date AS "maturityDate",
+                    transaction_reference AS "transactionReference",
                     status
-                FROM financial_records
-                WHERE id = ?
+                FROM public.financial_records
+                WHERE id = $1
                 LIMIT 1
             `;
 
 
-            const [rows] = await db.query(
+            const result = await db.query(
                 sql,
                 [id]
             );
+
+            const rows = result.rows;
 
 
             // ----------------------------------------------------
@@ -504,7 +504,7 @@ router.get(
 
             await db.query(
                 `
-                INSERT INTO recovery_history
+                INSERT INTO public.recovery_history
                 (
                     search_term,
                     member_number,
@@ -515,7 +515,7 @@ router.get(
                     records_found,
                     searched_by
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 `,
                 [
                     record.memberNumber ||
@@ -615,4 +615,3 @@ router.get(
 // ============================================================
 
 module.exports = router;
-
